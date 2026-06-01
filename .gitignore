@@ -1,0 +1,34 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Virtual environment
+venv/
+.env
+
+# Large data folders
+data/
+datasets/
+outputs/
+models/
+checkpoints/
+
+# Model files
+*.pt
+*.pth
+*.ckpt
+
+# Image/data files
+*.tif
+*.tiff
+*.png
+*.jpg
+*.jpeg
+*.geojson
+
+# OS files
+.DS_Store
+Thumbs.db
