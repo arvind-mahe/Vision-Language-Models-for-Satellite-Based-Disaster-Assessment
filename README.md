@@ -1,169 +1,282 @@
-# Vision–Language Model for Satellite-Based Disaster Assessment
+# Vision-Language Models for Satellite-Based Disaster Assessment
 
-> **FSE 570 Data Science Capstone** — Team Pennsylvania  
-> Arizona State University
+## Overview
 
-An end-to-end pipeline that converts paired pre/post-disaster satellite imagery into structured, grounded situation reports — enabling faster triage and better resource allocation for emergency responders.
+This project implements a three-tier disaster assessment pipeline that converts paired pre-disaster and post-disaster satellite imagery into structured, decision-ready situation reports.
 
----
+The system combines computer vision, geospatial data processing, structured JSON aggregation, and schema-grounded report generation to support post-disaster response planning. The pipeline was evaluated using the xView2/xBD satellite damage dataset, SpaceNet8 flood imagery, and OpenStreetMap road-network data.
 
-## The Problem
+## Project Motivation
 
-Natural disasters demand rapid damage assessment, but existing computer vision outputs (maps, labels) still require manual expert interpretation before they become decision-ready. This project closes that gap.
+Rapid disaster assessment is critical for emergency response, insurance analysis, and recovery planning. Manual review of satellite imagery is slow, and free-form language model outputs can introduce hallucinated or unverifiable information.
 
-**Pipeline output:** building-level damage classifications → structured JSON facts → natural-language situation report.
+This project addresses that challenge by separating the workflow into three auditable stages:
 
----
+1. **Bronze Tier**: Building-level damage classification from satellite imagery
+2. **Silver Tier**: Scene-level JSON aggregation and schema-grounded report generation
+3. **Gold Tier**: Geospatial enrichment using OpenStreetMap and OSMnx
 
-## Team
+## Pipeline Architecture
 
-| Name | Role | Email |
-|------|------|-------|
-| Raaghul Nataraj Kannan | Lead | rkanna18@asu.edu |
-| Yashwanth Jawaji | Deputy | yjawaji@asu.edu |
-| Arvind Mahendran | Member | amahend6@asu.edu |
-| Sashank Donavalli | Member | sdonava1@asu.edu |
-| Nanda Gopal Chalasani | Member | nchalas4@asu.edu |
-
----
-
-## Architecture
-
+```text
+Pre/Post Satellite Tiles
+        +
+Building Polygons
+        |
+        v
+Bronze Tier
+9-channel ResNet-18 damage classifier
+        |
+        v
+Scene-Level JSON Records
+damage counts, severe ratio, hotspots
+        |
+        v
+Gold Tier
+OSMnx road-network enrichment
+        |
+        v
+Silver Tier
+Schema-grounded situation reports
 ```
-Pre/Post Satellite Images
-        │
-        ▼
-┌───────────────────┐
-│  Building Cropper │  ← xBD polygons, 6-channel input (RGBpre + RGBpost)
-└────────┬──────────┘
-         │
-         ▼
-┌────────────────────┐
-│  Damage Classifier │  ← ResNet18 → ResNet50/EfficientNet/ViT
-│  (no-damage / minor / major / destroyed)
-└────────┬───────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  Scene Aggregator   │  ← JSON: counts, severe ratio, hotspots
-└────────┬────────────┘
-         │
-         ▼
-┌─────────────────────┐
-│  Report Generator   │  ← LLM + constrained prompts + grounding checks
-└─────────────────────┘
-         │
-         ▼
-  Situation Report (natural language)
-```
-
----
 
 ## Datasets
 
-| Dataset | Role | Details |
-|---------|------|---------|
-| **xView2 (xBD)** | Primary — train & eval | Paired pre/post RGB imagery, building polygons, 4-class damage labels |
-| **SpaceNet 8** | Generalization testing | High-res imagery with building footprints & road labels |
-| **OpenStreetMap** | Context enrichment *(optional)* | Roads, hospitals, shelters for prioritization |
+### xView2 / xBD
 
----
+The primary dataset used in this project is xView2/xBD, which provides paired pre-disaster and post-disaster satellite imagery with building polygon annotations and four damage labels:
+
+* No damage
+* Minor damage
+* Major damage
+* Destroyed
+
+The project processed and evaluated **53,137 held-out building crops** from the xBD hold-out split.
+
+### SpaceNet8
+
+SpaceNet8 was used for cross-dataset flood-transfer evaluation. The project evaluated a binary flood-transfer setup on **3,986 SpaceNet8 buildings**.
+
+### OpenStreetMap
+
+OpenStreetMap data was accessed through OSMnx to enrich disaster scenes with road-network and access-related features.
+
+## Key Features
+
+* Processed paired pre-disaster and post-disaster satellite imagery
+* Generated building-level crops from polygon annotations
+* Constructed structured scene-level JSON records
+* Aggregated damage counts and severe-damage ratios
+* Added DBSCAN-based priority hotspot detection
+* Integrated OSMnx road-network enrichment
+* Computed road density, access-risk signals, and nearest-hospital context
+* Generated schema-grounded situation reports with provenance tracking
+* Validated numeric claims using mismatch-rate checking
+
+## Model and Methodology
+
+The Bronze tier uses a **9-channel ResNet-18** model. The input contains:
+
+```text
+Pre-disaster RGB image
++
+Post-disaster RGB image
++
+Absolute pre/post difference image
+```
+
+This creates a 9-channel input representation:
+
+```text
+pre RGB | post RGB | absolute difference
+```
+
+The model was trained for building-level disaster damage classification. The downstream scene-level outputs were then aggregated into JSON records for report generation and decision-support enrichment.
+
+## Results
+
+### xBD Damage Classification
+
+The Bronze-tier model achieved the following results on **53,137 held-out xBD building crops**:
+
+| Metric      | Result |
+| ----------- | -----: |
+| Accuracy    |  0.842 |
+| Macro-F1    |  0.739 |
+| Weighted F1 |  0.851 |
+
+### SpaceNet8 Zero-Shot Flood Transfer
+
+The model was also evaluated on **3,986 SpaceNet8 buildings** for binary flood-transfer evaluation.
+
+| Class       | Precision | Recall |    F1 |
+| ----------- | --------: | -----: | ----: |
+| Flooded     |     0.417 |  0.092 | 0.151 |
+| Non-flooded |     0.694 |  0.941 | 0.799 |
+
+### Silver-Tier Grounded Reports
+
+The Silver-tier schema-grounded reporting pipeline achieved:
+
+```text
+0.0% numeric mismatch rate on three demo scenes
+```
+
+This means every numeric value cited in the generated reports was traceable back to a valid field in the source JSON record.
+
+### Gold-Tier Geospatial Enrichment
+
+The Gold tier was evaluated on **30 cross-disaster scenes** spanning ten disaster sub-types. OSMnx was used to enrich scene records with:
+
+* Road density
+* Nearest-hospital context
+* Access-risk signals
+* DBSCAN-based priority hotspots
+* Scene-level priority labels
 
 ## Repository Structure
 
-```
-Vision-Language-Models-for-Satellite-Based-Disaster-Assessment/
-│
+```text
+.
 ├── README.md
 ├── requirements.txt
-├── .gitignore
-│
 ├── notebooks/
-│   ├── xview2-2.ipynb            # xBD dataset — preprocessing, training, evaluation
-│   └── SpaceNet8_evaluation.ipynb  # SpaceNet 8 generalization + label mapping
-│
-└── src/                          # Cleaned Python modules (in progress)
-    ├── data_preprocessing.py
-    ├── train_xview2_model.py
-    ├── evaluate_spacenet8.py
-    ├── report_generation.py
-    └── utils.py
+│   ├── xview2-2.ipynb
+│   └── SpaceNet8_evaluation.ipynb
+├── src/
+│   ├── preprocessing/
+│   ├── aggregation/
+│   ├── geospatial/
+│   ├── reporting/
+│   └── evaluation/
+├── outputs/
+│   ├── scene_json/
+│   ├── reports/
+│   └── figures/
+└── app/
+    └── streamlit_app.py
 ```
 
----
+## Current Source Code
 
-## Setup
+The current repository contains the main project notebooks:
+
+```text
+notebooks/xview2-2.ipynb
+notebooks/SpaceNet8_evaluation.ipynb
+```
+
+These notebooks include the main experimental workflows for xView2/xBD processing, SpaceNet8 evaluation, and project pipeline development.
+
+## Setup Instructions
+
+Clone the repository:
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/arvind-mahe/Vision-Language-Models-for-Satellite-Based-Disaster-Assessment.git
-cd Vision-Language-Models-for-Satellite-Based-Disaster-Assessment
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+cd YOUR_REPO_NAME
+```
 
-# 2. Create and activate a virtual environment
+Create a virtual environment:
+
+```bash
 python -m venv venv
-source venv/bin/activate        # Mac/Linux
-# venv\Scripts\activate         # Windows
+```
 
-# 3. Install dependencies
+Activate the environment.
+
+For Windows:
+
+```bash
+venv\Scripts\activate
+```
+
+For macOS or Linux:
+
+```bash
+source venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
-> **Note:** Datasets, trained model weights, and generated outputs are not included in this repo. Download them separately and place locally (see `.gitignore` for excluded paths).
+## Requirements
 
----
+Example Python dependencies:
 
-## Methodology
+```text
+numpy
+pandas
+matplotlib
+scikit-learn
+opencv-python
+Pillow
+tqdm
+torch
+torchvision
+rasterio
+shapely
+geopandas
+osmnx
+networkx
+streamlit
+jupyter
+```
 
-Development follows a tiered plan to ensure deliverability while allowing up-scoping.
+## Important Security Note
 
-**Bronze — Building-level damage classifier**
-- 6-channel input stacking (RGBpre + RGBpost) with context padding and min crop size
-- ResNet18 baseline → ResNet50 / EfficientNet / lightweight ViT
-- Augmentation: flips, color jitter, blur/noise; class balancing via weighted loss + balanced sampling
-- Strict scene-level train/val splits to prevent leakage
+API keys and secrets should not be committed to this repository.
 
-**Silver — Grounded situation report generation**
-- JSON aggregation: per-class counts, severe damage ratio (major + destroyed), hotspots via grid clustering
-- LLM report generation constrained to JSON facts — minimizes hallucination
-- Automatic grounding checks: numeric consistency between report text and JSON
+Use environment variables for API keys:
 
-**Gold — Prioritization & generalization**
-- DBSCAN clustering of severely damaged buildings; zone ranking by severity density
-- OSM proximity features (roads, hospitals/shelters) for decision-oriented output
-- SpaceNet integration for cross-dataset generalization testing
+```python
+import os
 
----
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+```
 
-## Evaluation
+Store local secrets in a `.env` file and make sure `.env` is included in `.gitignore`.
 
-| Component | Metrics |
-|-----------|---------|
-| Damage classifier | Macro-F1, per-class precision/recall/F1, confusion matrix |
-| Robustness | Per disaster type and region breakdowns |
-| Report generation | Fact mismatch rate (JSON ↔ text); ROUGE/BLEU as secondary |
+## Reproducibility Notes
 
----
+Large satellite datasets, trained model weights, generated outputs, and API keys are not included in this repository. Users must configure local dataset paths before running the notebooks.
 
-## Project Timeline
+Recommended ignored folders:
 
-| Date | Milestone |
-|------|-----------|
-| 02/12 | Proposal submitted; scope finalized |
-| 02/19 | Datasets downloaded; preprocessing & splits complete |
-| 03/05 | Bronze baseline trained; metrics reported |
-| 03/19 | Silver prototype: JSON aggregation + report generation end-to-end |
-| 04/02 | Ablations (crop/backbone/augmentation); robustness evaluation |
-| 04/23 | Full pipeline demo + report draft |
-| 04/30 | Final submission |
+```text
+data/
+datasets/
+outputs/
+models/
+checkpoints/
+.env
+```
 
----
+## Project Contributions
 
-## Ethical Considerations
+This project was developed as part of a graduate capstone project at Arizona State University.
 
-This system is **decision support**, not authoritative damage certification. All outputs are model-driven estimates and should be used alongside human expertise. Known limitations include performance variation by disaster type, cloud/smoke occlusion, and potential distribution shift across geographic regions.
+My main contributions focused on:
 
----
+* Data preprocessing for paired satellite imagery
+* Building crop and scene-record preparation
+* Gold-tier OSMnx geospatial integration
+* Road-network enrichment for disaster decision support
+
+## Future Work
+
+Potential improvements include:
+
+* Converting notebook workflows into modular Python scripts
+* Adding automated data validation checks
+* Improving cross-dataset flood-transfer performance
+* Adding GSD-aware physical-scale cropping
+* Expanding the Streamlit dashboard for interactive disaster-scene analysis
+* Adding CI checks for schema validation and numeric mismatch rate
 
 ## License
 
-For academic use only — FSE 570 Capstone Project, Arizona State University.
+This repository is intended for academic and research use.
